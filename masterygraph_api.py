@@ -548,9 +548,12 @@ def v1_auth_forgot_password(req: PasswordResetRequest):
     auth = get_auth_mgr()
     try:
         token = auth.generate_reset_token(req.email)
-        # In production, send email with reset link
-        # For now, return token directly for testing
-        return {"success": True, "message": "If this email exists, a reset link has been sent.", "token": token}
+        # Get user name for personalization
+        user = auth.get_user_by_email(req.email)
+        name = user.get("name", "") if user else ""
+        # Send reset email via Resend
+        email_service.send_password_reset(req.email, name, token)
+        return {"success": True, "message": "If this email exists, a reset link has been sent."}
     except ValueError:
         # Still return success to prevent email enumeration
         return {"success": True, "message": "If this email exists, a reset link has been sent."}

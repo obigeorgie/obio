@@ -299,6 +299,27 @@ class AuthManager:
             "last_login": row[5],
         }
     
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Get user by email."""
+        import sqlite3
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT id, email, name, role, created_at, last_login FROM users WHERE email = ?",
+                (email.lower(),)
+            ).fetchone()
+        
+        if not row:
+            return None
+        
+        return {
+            "id": row[0],
+            "email": row[1],
+            "name": row[2],
+            "role": row[3],
+            "created_at": row[4],
+            "last_login": row[5],
+        }
+    
     def link_learner(self, user_id: str, learner_id: str) -> bool:
         """Link a learner to a user (parent)."""
         import sqlite3

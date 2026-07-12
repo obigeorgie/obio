@@ -139,4 +139,42 @@ class EmailService:
         """
         return self._send(to, f"Weekly Report: {learner_name}", html)
 
-email_service = EmailService()
+    def send_password_reset(self, to: str, name: str, reset_token: str) -> dict:
+        """Send password reset email with secure link."""
+        reset_url = f"https://app.obiomacare.com/reset-password?token={reset_token}"
+        html = f"""
+        <div style="font-family: Inter, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; color: #1f1c19;">
+            <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); padding: 48px 40px; text-align: center; color: white; border-radius: 0 0 24px 24px;">
+                <div style="font-size: 40px; margin-bottom: 16px;">🔐</div>
+                <h1 style="margin: 0; font-size: 24px; font-weight: 700;">Reset Your Password</h1>
+                <p style="margin: 8px 0 0; opacity: 0.9; font-size: 15px;">We received a request to reset your OBIO password.</p>
+            </div>
+            <div style="padding: 40px; background: #faf9f7;">
+                <p style="font-size: 16px; color: #5c554f; line-height: 1.6;">
+                    Hi {name or "there"},
+                </p>
+                <p style="color: #7c756d; line-height: 1.6;">
+                    Click the button below to set a new password. This link is valid for 24 hours and can only be used once.
+                </p>
+                <div style="text-align: center; margin: 32px 0;">
+                    <a href="{reset_url}"
+                       style="display: inline-block; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white;
+                              padding: 16px 40px; text-decoration: none; border-radius: 12px; font-weight: 600; font-size: 16px;
+                              box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);">
+                        Reset Password
+                    </a>
+                </div>
+                <p style="color: #a8a198; font-size: 13px; line-height: 1.5;">
+                    Or copy and paste this link into your browser:<br>
+                    <span style="color: #6366f1; word-break: break-all;">{reset_url}</span>
+                </p>
+                <div style="border-top: 1px solid #e8e5df; margin-top: 32px; padding-top: 24px;">
+                    <p style="color: #a8a198; font-size: 13px; margin: 0;">
+                        If you didn't request this reset, you can safely ignore this email. Your password won't change.
+                    </p>
+                </div>
+            </div>
+        </div>
+        """
+        text = f"""Reset Your OBIO Password\n\nHi {name or 'there'},\n\nWe received a request to reset your OBIO password.\n\nClick this link to reset: {reset_url}\n\nThis link is valid for 24 hours.\n\nIf you didn't request this, ignore this email."""
+        return self._send(to, "Reset your OBIO password", html, text)
