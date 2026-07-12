@@ -50,9 +50,9 @@ app = FastAPI(
     title="OBIO API",
     description="OBIO is the logic-driven, heart-aware learning engine that decodes exactly how your child learns best.",
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 # CORS for web frontend integration
