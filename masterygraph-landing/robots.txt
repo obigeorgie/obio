@@ -1,0 +1,24 @@
+User-agent: *
+Allow: /
+Allow: /assessment
+Allow: /pricing
+Allow: /register
+Allow: /login
+
+# AI search crawlers
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+Sitemap: https://obiomacare.com/sitemap.xml
