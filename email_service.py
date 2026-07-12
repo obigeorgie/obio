@@ -178,3 +178,5 @@ class EmailService:
         """
         text = f"""Reset Your OBIO Password\n\nHi {name or 'there'},\n\nWe received a request to reset your OBIO password.\n\nClick this link to reset: {reset_url}\n\nThis link is valid for 24 hours.\n\nIf you didn't request this, ignore this email."""
         return self._send(to, "Reset your OBIO password", html, text)
+
+email_service = EmailService()
