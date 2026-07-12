@@ -1,0 +1,52 @@
+# Caddyfile for OBIO API (api.obiomacare.com)
+# MasteryGraph Core — FastAPI behind Caddy with Auto HTTPS
+
+{
+    email nnamdiokorafor@gmail.com
+}
+
+api.obiomacare.com {
+    # Enable gzip compression
+    encode gzip
+
+    # CORS headers for web frontend integration
+    header {
+        Access-Control-Allow-Origin "https://app.obiomacare.com"
+        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, X-API-Key, Authorization"
+        Access-Control-Allow-Credentials "true"
+        Access-Control-Max-Age "86400"
+        # Security headers
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+    }
+
+    # Handle preflight OPTIONS
+    @options method OPTIONS
+    respond @options 204
+
+    # Reverse proxy to FastAPI on localhost:8000
+    reverse_proxy localhost:8000 {
+        health_uri /health
+        health_interval 30s
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/api-access.log {
+            roll_size 10MB
+            roll_keep 10
+        }
+        format json
+    }
+}
+
+# Also serve on plain HTTP redirect if someone hits http://api.obiomacare.com
+http://api.obiomacare.com {
+    redir https://{host}{uri} permanent
+}

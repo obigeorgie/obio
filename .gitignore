@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.env
+*.egg-info/
+dist/
+build/
+
+# Database (contains user data)
+*.db
+*.sqlite
+*.sqlite3
+
+# Node.js
+node_modules/
+frontend/dist/
+landing/dist/
+
+# Build artifacts
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sensitive / runtime
+downloads/
+memory/
+memorized_diary/
+memory_consolidation/
+.openclaw/
+.agents/
+masterygraph-logs/
+masterygraph-profiles/
+assessments/
+content/
+analytics/
+outreach/
+outreach_contacts.csv
+stripe_price_ids.env
+start_masterygraph.sh
+
+# Workspace personal files
+USER.md
+SOUL.md
+IDENTITY.md
+AGENTS.md
+BOOTSTRAP.md
+TOOLS.md
+HEARTBEAT.md
+EOF

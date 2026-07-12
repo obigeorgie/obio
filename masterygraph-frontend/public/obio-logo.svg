@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60">
+  <!-- OBIO Logo -->
+  <defs>
+    <linearGradient id="obioGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#8b5cf6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#a855f7;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Brain/Node Icon -->
+  <g transform="translate(10, 10)">
+    <circle cx="20" cy="20" r="18" fill="url(#obioGrad)" opacity="0.15"/>
+    <circle cx="20" cy="20" r="14" fill="none" stroke="url(#obioGrad)" stroke-width="2.5"/>
+    <circle cx="14" cy="14" r="3" fill="#6366f1"/>
+    <circle cx="26" cy="14" r="3" fill="#8b5cf6"/>
+    <circle cx="20" cy="26" r="3" fill="#a855f7"/>
+    <line x1="14" y1="14" x2="26" y2="14" stroke="#6366f1" stroke-width="1.5"/>
+    <line x1="14" y1="14" x2="20" y2="26" stroke="#8b5cf6" stroke-width="1.5"/>
+    <line x1="26" y1="14" x2="20" y2="26" stroke="#a855f7" stroke-width="1.5"/>
+  </g>
+  
+  <!-- OBIO Text -->
+  <text x="58" y="38" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="32" font-weight="800" fill="#1e293b">OBIO</text>
+  
+  <!-- Tagline -->
+  <text x="58" y="52" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="500" fill="#64748b" letter-spacing="0.05em">LEARNING PATHS</text>
+</svg>
