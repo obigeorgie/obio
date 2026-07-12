@@ -58,7 +58,7 @@ app = FastAPI(
 # CORS for web frontend integration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://app.obiomacare.com", "https://obiomacare.com"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
