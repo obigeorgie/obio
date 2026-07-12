@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { api } from "../api";
 import { setAuth } from "../lib/auth";
-import { Brain, Eye, EyeOff, ArrowRight, Mail, Lock } from "lucide-react";
+import { Brain, Eye, EyeOff, ArrowRight, Mail, Lock, AlertCircle, X } from "lucide-react";
 
 const Logo = () => (
   <div className="flex items-center justify-center gap-2.5">
@@ -14,6 +14,15 @@ const Logo = () => (
   </div>
 );
 
+interface FieldErrors {
+  email?: string;
+  password?: string;
+}
+
+function validateEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -21,25 +30,83 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  const validateField = useCallback((field: string, value: string): string | undefined => {
+    switch (field) {
+      case "email":
+        if (!value.trim()) return "Email is required";
+        if (!validateEmail(value)) return "Please enter a valid email address";
+        return undefined;
+      case "password":
+        if (!value) return "Password is required";
+        return undefined;
+      default:
+        return undefined;
+    }
+  }, []);
+
+  const handleBlur = (field: string) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    const value = field === "email" ? email : password;
+    const error = validateField(field, value);
+    setFieldErrors((prev) => ({ ...prev, [field]: error }));
+  };
+
+  const handleChange = (field: string, value: string) => {
+    if (field === "email") setEmail(value);
+    if (field === "password") setPassword(value);
+
+    if (touched[field]) {
+      const error = validateField(field, value);
+      setFieldErrors((prev) => ({ ...prev, [field]: error }));
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    const errors: FieldErrors = {
+      email: validateField("email", email),
+      password: validateField("password", password),
+    };
+    setFieldErrors(errors);
+    setTouched({ email: true, password: true });
+
+    if (errors.email || errors.password) return;
+
     setLoading(true);
     try {
       const res = await api.login({ email, password });
       setAuth(res.token, res.user);
       navigate("/");
     } catch (err: any) {
-      setError(err.message || "Login failed");
+      const msg = err.message || "Login failed";
+      if (msg.includes("401") || msg.includes("Invalid") || msg.includes("invalid")) {
+        setError("Invalid email or password. Please try again.");
+      } else if (msg.includes("network") || msg.includes("fetch")) {
+        setError("Network error. Please check your connection and try again.");
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const inputClass = (field: string) => {
+    const hasError = fieldErrors[field as keyof FieldErrors] && touched[field];
+    return `w-full pl-10 pr-4 py-3 bg-white border rounded-xl text-sm text-[#1f1c19] placeholder-[#a8a198] focus:outline-none focus:ring-2 transition-all ${
+      hasError
+        ? "border-red-300 focus:border-red-400 focus:ring-red-100"
+        : "border-[#e8e5df] focus:border-[#6366f1] focus:ring-[#6366f1]/10"
+    }`;
+  };
+
   return (
     <div className="min-h-screen flex">
-      {/* Left side — visual */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#6366f1] via-[#7c3aed] to-[#a855f7] relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
           <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
@@ -80,10 +147,8 @@ export default function Login() {
         </div>
       </div>
 
-      {/* Right side — form */}
       <div className="flex-1 flex items-center justify-center p-6 md:p-12 bg-[#faf9f7]">
         <div className="w-full max-w-[420px] space-y-8">
-          {/* Mobile logo */}
           <div className="lg:hidden flex justify-center">
             <Logo />
           </div>
@@ -95,42 +160,49 @@ export default function Login() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             {error && (
               <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-start gap-3 animate-fade-in">
-                <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-red-500 text-xs font-bold">!</span>
-                </div>
+                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-red-600">{error}</p>
               </div>
             )}
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-[#5c554f] mb-1.5">Email</label>
+                <label className="block text-sm font-medium text-[#5c554f] mb-1.5">
+                  Email <span className="text-red-400">*</span>
+                </label>
                 <div className="relative">
                   <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#a8a198]" />
                   <input
                     type="email"
-                    required
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-white border border-[#e8e5df] rounded-xl text-sm text-[#1f1c19] placeholder-[#a8a198] focus:outline-none focus:border-[#6366f1] focus:ring-2 focus:ring-[#6366f1]/10 transition-all"
+                    onChange={(e) => handleChange("email", e.target.value)}
+                    onBlur={() => handleBlur("email")}
+                    className={inputClass("email")}
                     placeholder="you@example.com"
                   />
                 </div>
+                {fieldErrors.email && touched.email && (
+                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                    <X className="w-3 h-3" /> {fieldErrors.email}
+                  </p>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#5c554f] mb-1.5">Password</label>
+                <label className="block text-sm font-medium text-[#5c554f] mb-1.5">
+                  Password <span className="text-red-400">*</span>
+                </label>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#a8a198]" />
                   <input
                     type={showPassword ? "text" : "password"}
-                    required
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-11 py-3 bg-white border border-[#e8e5df] rounded-xl text-sm text-[#1f1c19] placeholder-[#a8a198] focus:outline-none focus:border-[#6366f1] focus:ring-2 focus:ring-[#6366f1]/10 transition-all"
+                    onChange={(e) => handleChange("password", e.target.value)}
+                    onBlur={() => handleBlur("password")}
+                    className={inputClass("password") + " pr-11"}
                     placeholder="Enter your password"
                   />
                   <button
@@ -141,6 +213,11 @@ export default function Login() {
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {fieldErrors.password && touched.password && (
+                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                    <X className="w-3 h-3" /> {fieldErrors.password}
+                  </p>
+                )}
               </div>
             </div>
 

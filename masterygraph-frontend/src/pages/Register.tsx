@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { api } from "../api";
 import { setAuth } from "../lib/auth";
-import { Brain, Eye, EyeOff, ArrowRight, Mail, Lock, User } from "lucide-react";
+import { Brain, Eye, EyeOff, ArrowRight, Mail, Lock, User, Check, X, AlertCircle } from "lucide-react";
 
 const Logo = () => (
   <div className="flex items-center justify-center gap-2.5">
@@ -14,6 +14,34 @@ const Logo = () => (
   </div>
 );
 
+interface FieldErrors {
+  name?: string;
+  email?: string;
+  password?: string;
+}
+
+function validateEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function getPasswordStrength(password: string): { score: number; label: string; color: string } {
+  let score = 0;
+  if (password.length >= 8) score++;
+  if (password.length >= 12) score++;
+  if (/[A-Z]/.test(password)) score++;
+  if (/[0-9]/.test(password)) score++;
+  if (/[^A-Za-z0-9]/.test(password)) score++;
+
+  const levels = [
+    { label: "Too weak", color: "#ef4444" },
+    { label: "Weak", color: "#f97316" },
+    { label: "Fair", color: "#eab308" },
+    { label: "Good", color: "#22c55e" },
+    { label: "Strong", color: "#16a34a" },
+  ];
+  return { score, ...levels[Math.min(score, 4)] };
+}
+
 export default function Register() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -22,24 +50,111 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [success, setSuccess] = useState(false);
+
+  const validateField = useCallback((field: string, value: string): string | undefined => {
+    switch (field) {
+      case "name":
+        if (!value.trim()) return "Name is required";
+        if (value.trim().length < 2) return "Name must be at least 2 characters";
+        return undefined;
+      case "email":
+        if (!value.trim()) return "Email is required";
+        if (!validateEmail(value)) return "Please enter a valid email address";
+        return undefined;
+      case "password":
+        if (!value) return "Password is required";
+        if (value.length < 8) return "Password must be at least 8 characters";
+        return undefined;
+      default:
+        return undefined;
+    }
+  }, []);
+
+  const handleBlur = (field: string) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    const value = field === "name" ? name : field === "email" ? email : password;
+    const error = validateField(field, value);
+    setFieldErrors((prev) => ({ ...prev, [field]: error }));
+  };
+
+  const handleChange = (field: string, value: string) => {
+    if (field === "name") setName(value);
+    if (field === "email") setEmail(value);
+    if (field === "password") setPassword(value);
+
+    if (touched[field]) {
+      const error = validateField(field, value);
+      setFieldErrors((prev) => ({ ...prev, [field]: error }));
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    // Validate all fields
+    const errors: FieldErrors = {
+      name: validateField("name", name),
+      email: validateField("email", email),
+      password: validateField("password", password),
+    };
+    setFieldErrors(errors);
+    setTouched({ name: true, email: true, password: true });
+
+    if (errors.name || errors.email || errors.password) {
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await api.register({ email, password, name });
       if (res.success) {
         const loginRes = await api.login({ email, password });
         setAuth(loginRes.token, loginRes.user);
-        navigate("/");
+        setSuccess(true);
+        setTimeout(() => navigate("/"), 1500);
       }
     } catch (err: any) {
-      setError(err.message || "Registration failed");
+      const msg = err.message || "Registration failed";
+      if (msg.includes("already registered") || msg.includes("already exists")) {
+        setFieldErrors((prev) => ({ ...prev, email: "This email is already registered" }));
+      } else if (msg.includes("password") || msg.includes("Password")) {
+        setFieldErrors((prev) => ({ ...prev, password: msg }));
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  const passwordStrength = getPasswordStrength(password);
+
+  const inputClass = (field: string) => {
+    const hasError = fieldErrors[field as keyof FieldErrors] && touched[field];
+    return `w-full pl-10 pr-4 py-3 bg-white border rounded-xl text-sm text-[#1f1c19] placeholder-[#a8a198] focus:outline-none focus:ring-2 transition-all ${
+      hasError
+        ? "border-red-300 focus:border-red-400 focus:ring-red-100"
+        : "border-[#e8e5df] focus:border-[#6366f1] focus:ring-[#6366f1]/10"
+    }`;
+  };
+
+  if (success) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#faf9f7] p-6">
+        <div className="text-center space-y-6 max-w-md">
+          <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
+            <Check className="w-8 h-8 text-emerald-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-[#1f1c19]">Account created!</h1>
+          <p className="text-[#7c756d]">Welcome to OBIO. Redirecting to your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex">
@@ -93,57 +208,71 @@ export default function Register() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             {error && (
               <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-start gap-3 animate-fade-in">
-                <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-red-500 text-xs font-bold">!</span>
-                </div>
+                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-red-600">{error}</p>
               </div>
             )}
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-[#5c554f] mb-1.5">Full name</label>
+                <label className="block text-sm font-medium text-[#5c554f] mb-1.5">
+                  Full name <span className="text-red-400">*</span>
+                </label>
                 <div className="relative">
                   <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#a8a198]" />
                   <input
                     type="text"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-white border border-[#e8e5df] rounded-xl text-sm text-[#1f1c19] placeholder-[#a8a198] focus:outline-none focus:border-[#6366f1] focus:ring-2 focus:ring-[#6366f1]/10 transition-all"
+                    onChange={(e) => handleChange("name", e.target.value)}
+                    onBlur={() => handleBlur("name")}
+                    className={inputClass("name")}
                     placeholder="Your name"
                   />
                 </div>
+                {fieldErrors.name && touched.name && (
+                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                    <X className="w-3 h-3" /> {fieldErrors.name}
+                  </p>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#5c554f] mb-1.5">Email</label>
+                <label className="block text-sm font-medium text-[#5c554f] mb-1.5">
+                  Email <span className="text-red-400">*</span>
+                </label>
                 <div className="relative">
                   <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#a8a198]" />
                   <input
                     type="email"
-                    required
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-white border border-[#e8e5df] rounded-xl text-sm text-[#1f1c19] placeholder-[#a8a198] focus:outline-none focus:border-[#6366f1] focus:ring-2 focus:ring-[#6366f1]/10 transition-all"
+                    onChange={(e) => handleChange("email", e.target.value)}
+                    onBlur={() => handleBlur("email")}
+                    className={inputClass("email")}
                     placeholder="you@example.com"
                   />
                 </div>
+                {fieldErrors.email && touched.email && (
+                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                    <X className="w-3 h-3" /> {fieldErrors.email}
+                  </p>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#5c554f] mb-1.5">Password</label>
+                <label className="block text-sm font-medium text-[#5c554f] mb-1.5">
+                  Password <span className="text-red-400">*</span>
+                </label>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#a8a198]" />
                   <input
                     type={showPassword ? "text" : "password"}
-                    required
-                    minLength={8}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-11 py-3 bg-white border border-[#e8e5df] rounded-xl text-sm text-[#1f1c19] placeholder-[#a8a198] focus:outline-none focus:border-[#6366f1] focus:ring-2 focus:ring-[#6366f1]/10 transition-all"
+                    onChange={(e) => handleChange("password", e.target.value)}
+                    onBlur={() => handleBlur("password")}
+                    className={inputClass("password") + " pr-11"}
                     placeholder="Min. 8 characters"
                   />
                   <button
@@ -154,6 +283,47 @@ export default function Register() {
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {fieldErrors.password && touched.password && (
+                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                    <X className="w-3 h-3" /> {fieldErrors.password}
+                  </p>
+                )}
+
+                {/* Password strength meter */}
+                {password.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <div className="flex gap-1.5">
+                      {[1, 2, 3, 4].map((i) => (
+                        <div
+                          key={i}
+                          className="h-1.5 flex-1 rounded-full transition-all"
+                          style={{
+                            backgroundColor: i <= passwordStrength.score ? passwordStrength.color : "#e8e5df",
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-xs" style={{ color: passwordStrength.color }}>
+                      {passwordStrength.label}
+                    </p>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      {[
+                        { label: "8+ chars", met: password.length >= 8 },
+                        { label: "Uppercase", met: /[A-Z]/.test(password) },
+                        { label: "Number", met: /[0-9]/.test(password) },
+                        { label: "Special char", met: /[^A-Za-z0-9]/.test(password) },
+                      ].map((req) => (
+                        <span
+                          key={req.label}
+                          className={`text-xs flex items-center gap-1 ${req.met ? "text-emerald-600" : "text-[#a8a198]"}`}
+                        >
+                          {req.met ? <Check className="w-3 h-3" /> : <span className="w-3 h-3 rounded-full border border-current" />}
+                          {req.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
