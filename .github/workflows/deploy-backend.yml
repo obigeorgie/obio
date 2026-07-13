@@ -1,0 +1,54 @@
+name: Deploy Backend to VPS
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'masterygraph-frontend/**'
+      - 'masterygraph-landing/**'
+      - '**.md'
+      - '.github/workflows/vercel-deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy-backend:
+    name: Deploy Backend via Webhook
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger VPS Deploy Webhook
+        run: |
+          # Build payload
+          PAYLOAD='{"ref":"refs/heads/main"}'
+          # Calculate HMAC signature
+          SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "${{ secrets.GITHUB_DEPLOY_SECRET }}" | sed 's/^.* //')
+          
+          # Trigger deploy
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: sha256=$SIGNATURE" \
+            -d "$PAYLOAD" \
+            "https://api.obiomacare.com/v1/deploy" \
+            -s -o response.json -w "%{http_code}"
+          
+          echo ""
+          echo "=== Response ==="
+          cat response.json | python3 -m json.tool || cat response.json
+        timeout-minutes: 2
+
+      - name: Wait for service restart
+        run: sleep 10
+
+      - name: Health Check
+        run: |
+          for i in 1 2 3; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api.obiomacare.com/v1/health || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Backend is healthy"
+              exit 0
+            fi
+            echo "Attempt $i: Status $STATUS, retrying..."
+            sleep 5
+          done
+          echo "❌ Backend health check failed after 3 attempts"
+          exit 1
+        timeout-minutes: 1

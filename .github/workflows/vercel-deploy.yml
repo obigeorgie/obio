@@ -1,0 +1,62 @@
+name: Deploy Frontend to Vercel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'masterygraph-frontend/**'
+      - 'masterygraph-landing/**'
+  workflow_dispatch:
+
+jobs:
+  deploy-frontend:
+    name: Deploy Frontend App
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: masterygraph-frontend/package-lock.json
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Deploy to Vercel (Frontend)
+        working-directory: ./masterygraph-frontend
+        run: |
+          vercel deploy --prod --token ${{ secrets.VERCEL_TOKEN }} \
+            --scope ${{ secrets.VERCEL_SCOPE }} \
+            --yes
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_FRONTEND }}
+
+  deploy-landing:
+    name: Deploy Landing Page
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Deploy to Vercel (Landing)
+        working-directory: ./masterygraph-landing
+        run: |
+          vercel deploy --prod --token ${{ secrets.VERCEL_TOKEN }} \
+            --scope ${{ secrets.VERCEL_SCOPE }} \
+            --yes
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_LANDING }}

@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
+import hmac
+import hashlib
+import subprocess
+
 from fastapi import FastAPI, HTTPException, Query, Header, Depends, Request, status, APIRouter, Body
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -101,7 +105,7 @@ async def api_key_middleware(request: Request, call_next):
                     "/v1/auth/register", "/v1/auth/login", "/v1/auth/forgot-password", "/v1/auth/reset-password",
                     "/v1/assessment", "/v1/analytics/track",
                     "/v1/content/stats", "/v1/content",
-                    "/v1/pricing")
+                    "/v1/pricing", "/v1/deploy", "/v1/deploy/status")
     if request.method == "OPTIONS" or request.url.path in exempt_paths:
         return await call_next(request)
     
@@ -159,7 +163,7 @@ USER_RATE_LIMIT = int(os.getenv("USER_RATE_LIMIT", "60"))  # requests per minute
 @app.middleware("http")
 async def user_rate_limit_middleware(request: Request, call_next):
     """Rate limit per authenticated user (or per IP for unauthenticated)."""
-    exempt_paths = ("/", "/health", "/v1/health", "/docs", "/redoc", "/openapi.json")
+    exempt_paths = ("/", "/health", "/v1/health", "/docs", "/redoc", "/openapi.json", "/v1/deploy", "/v1/deploy/status")
     if request.method == "OPTIONS" or request.url.path in exempt_paths:
         return await call_next(request)
     
@@ -1565,6 +1569,75 @@ def v1_get_pricing():
 
 # ── Include the v1 router ────────────────────────────────────────────
 app.include_router(v1)
+
+# ── CI/CD Deploy Webhook ───────────────────────────────────────────────
+DEPLOY_SECRET = os.getenv("GITHUB_DEPLOY_SECRET", "")
+DEPLOY_BRANCH = os.getenv("GITHUB_DEPLOY_BRANCH", "main")
+DEPLOY_DIR = os.getenv("GITHUB_DEPLOY_DIR", "/root/.openclaw/workspace")
+_last_deploy_time = None
+
+@app.post("/v1/deploy")
+async def deploy_webhook(request: Request, x_hub_signature_256: str = Header(None, alias="X-Hub-Signature-256")):
+    """GitHub webhook endpoint for auto-deployment."""
+    global _last_deploy_time
+    if not DEPLOY_SECRET:
+        raise HTTPException(status_code=501, detail="Deploy webhook not configured")
+    body = await request.body()
+    if x_hub_signature_256:
+        expected = "sha256=" + hmac.new(DEPLOY_SECRET.encode(), body, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, x_hub_signature_256):
+            raise HTTPException(status_code=401, detail="Invalid signature")
+    try:
+        payload = await request.json()
+    except:
+        payload = {}
+    ref = payload.get("ref", "")
+    branch = ref.replace("refs/heads/", "")
+    if branch != DEPLOY_BRANCH:
+        return {"status": "skipped", "reason": f"Branch {branch} != {DEPLOY_BRANCH}"}
+    try:
+        # Step 1: git pull (safe to run in-process)
+        result = subprocess.run(
+            ["bash", "-c", f"cd {DEPLOY_DIR} && git pull origin {DEPLOY_BRANCH}"],
+            capture_output=True, text=True, timeout=60
+        )
+        if result.returncode != 0:
+            return {
+                "status": "failed",
+                "step": "git_pull",
+                "branch": branch,
+                "stdout": result.stdout[-500:] if result.stdout else "",
+                "stderr": result.stderr[-500:] if result.stderr else "",
+            }
+        
+        # Step 2: Restart service in a detached process so we don't kill ourselves
+        # Use nohup to survive after this process exits
+        restart_cmd = f"cd {DEPLOY_DIR} && sleep 2 && systemctl restart obio-backend.service"
+        subprocess.Popen(
+            ["nohup", "bash", "-c", restart_cmd],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
+        
+        _last_deploy_time = datetime.now().isoformat()
+        return {
+            "status": "deployed",
+            "branch": branch,
+            "stdout": result.stdout[-500:] if result.stdout else "",
+            "restart": "scheduled",
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@app.get("/v1/deploy/status")
+def deploy_status():
+    return {
+        "configured": bool(DEPLOY_SECRET),
+        "branch": DEPLOY_BRANCH,
+        "directory": DEPLOY_DIR,
+        "last_deploy": _last_deploy_time,
+    }
 
 # ── Legacy root routes (no auth required) ────────────────────────────
 @app.get("/")
