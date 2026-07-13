@@ -63,3 +63,5 @@ BOOTSTRAP.md
 TOOLS.md
 HEARTBEAT.md
 EOF
+*.db-shm
+*.db-wal

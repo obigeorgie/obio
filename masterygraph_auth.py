@@ -89,11 +89,14 @@ class AuthManager:
                 conn.execute(
                     """INSERT INTO subscriptions (id, user_id, plan, status, created_at, updated_at)
                        VALUES (?, ?, ?, ?, ?, ?)""",
-                    (f"sub_{user_id}", user_id, "free", "free", now, now)
+                    (f"sub_{user_id}", user_id, "free", "active", now, now)
                 )
                 conn.commit()
-            except sqlite3.IntegrityError:
-                raise ValueError("Email already registered")
+            except sqlite3.IntegrityError as e:
+                error_msg = str(e).lower()
+                if "email" in error_msg or "unique" in error_msg:
+                    raise ValueError("Email already registered")
+                raise ValueError(f"Registration failed: {e}")
         
         return {"id": user_id, "email": email.lower(), "name": name, "role": role}
     

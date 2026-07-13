@@ -28,6 +28,31 @@ from masterygraph_auth import AuthManager
 from stripe_payments import get_stripe_manager, STRIPE_PRICE_FAMILY, STRIPE_PRICE_EDUCATOR
 from email_service import email_service
 from outreach_manager import get_outreach_manager
+from audit_logger import get_audit_logger
+
+# ── Sentry Error Tracking ─────────────────────────────────────────────────
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[FastApiIntegration()],
+        traces_sample_rate=0.1,  # 10% of requests traced
+        profiles_sample_rate=0.05,
+        environment=os.getenv("ENVIRONMENT", "production"),
+        release=os.getenv("RELEASE", "1.0.0"),
+    )
+    print("[Sentry] Initialized with DSN")
+
+# ── Audit Logger ─────────────────────────────────────────────────────────
+_audit = None
+
+def get_audit():
+    global _audit
+    if _audit is None:
+        _audit = get_audit_logger()
+    return _audit
 
 # ── Auth ─────────────────────────────────────────────────────────────────
 _api_key_mgr = None
@@ -68,7 +93,7 @@ app.add_middleware(
 @app.middleware("http")
 async def api_key_middleware(request: Request, call_next):
     """Auth: exempt paths skip auth. Bearer tokens validate JWT. Otherwise require X-API-Key."""
-    exempt_paths = ("/", "/health", "/docs", "/redoc", "/openapi.json",
+    exempt_paths = ("/", "/health", "/v1/health", "/docs", "/redoc", "/openapi.json",
                     "/v1/auth/register", "/v1/auth/login", "/v1/auth/forgot-password", "/v1/auth/reset-password",
                     "/v1/assessment", "/v1/analytics/track",
                     "/v1/content/stats", "/v1/content",
@@ -119,9 +144,94 @@ async def api_key_middleware(request: Request, call_next):
         response.headers["X-RateLimit-Remaining"] = str(remaining)
     return response
 
+# ── Per-User Rate Limiting ─────────────────────────────────────────────────
+import time
+from collections import defaultdict
+
+# In-memory rate limit store: {user_id_or_ip: [(timestamp, count)]}
+_user_rate_limits: Dict[str, list] = defaultdict(list)
+USER_RATE_LIMIT = int(os.getenv("USER_RATE_LIMIT", "60"))  # requests per minute
+
+@app.middleware("http")
+async def user_rate_limit_middleware(request: Request, call_next):
+    """Rate limit per authenticated user (or per IP for unauthenticated)."""
+    exempt_paths = ("/", "/health", "/v1/health", "/docs", "/redoc", "/openapi.json")
+    if request.method == "OPTIONS" or request.url.path in exempt_paths:
+        return await call_next(request)
+    
+    # Identify user or use IP
+    user = getattr(request.state, "user", None)
+    key = user["id"] if user else (request.client.host if request.client else "unknown")
+    
+    now = time.time()
+    window = 60  # 1 minute window
+    
+    # Clean old entries
+    _user_rate_limits[key] = [t for t in _user_rate_limits[key] if now - t < window]
+    
+    # Check limit
+    if len(_user_rate_limits[key]) >= USER_RATE_LIMIT:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={"detail": f"Rate limit exceeded: {USER_RATE_LIMIT} requests per minute"},
+            headers={"Retry-After": str(int(window - (now - _user_rate_limits[key][0])))}
+        )
+    
+    # Record this request
+    _user_rate_limits[key].append(now)
+    
+    response = await call_next(request)
+    response.headers["X-User-RateLimit-Limit"] = str(USER_RATE_LIMIT)
+    response.headers["X-User-RateLimit-Remaining"] = str(USER_RATE_LIMIT - len(_user_rate_limits[key]))
+    return response
+
+# ── Security Headers (CSP) ──────────────────────────────────────────────────
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Add security headers to all responses."""
+    response = await call_next(request)
+    
+    # Content Security Policy
+    csp = "; ".join([
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://js.stripe.com",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' data: https:",
+        "connect-src 'self' https://api.openai.com https://api.stripe.com",
+        "frame-src https://js.stripe.com",
+        "frame-ancestors 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+    ])
+    response.headers["Content-Security-Policy"] = csp
+    
+    # Other security headers
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    
+    return response
+
 # Shared instances (singleton pattern)
 _core = None
 _db = None
+
+def _verify_learner_ownership(request: Request, learner_id: str):
+    """Verify the authenticated user owns the learner. Raises 403 if not."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return  # API key auth — skip ownership check
+    
+    db = get_db()
+    owned_ids = db.get_user_learners(user["id"])
+    
+    if learner_id not in owned_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this learner"
+        )
 
 def get_core():
     global _core
@@ -240,9 +350,17 @@ class LoginRequest(BaseModel):
     password: str
 
 class CheckoutRequest(BaseModel):
-    plan: str = Field(..., pattern="^(family|educator)$")
+    plan: Optional[str] = Field(None, pattern="^(family|educator)$")
+    plan_type: Optional[str] = Field(None, pattern="^(family|educator)$")
     success_url: Optional[str] = None
     cancel_url: Optional[str] = None
+    
+    def get_plan(self) -> str:
+        """Return the plan value, preferring 'plan' over 'plan_type'."""
+        p = self.plan or self.plan_type
+        if not p:
+            raise ValueError("Either 'plan' or 'plan_type' is required")
+        return p
 
 class CancelSubscriptionRequest(BaseModel):
     subscription_id: str
@@ -319,21 +437,43 @@ def v1_explain(req: ExplanationRequest):
 
 # ── Learners ─────────────────────────────────────────────────────────
 @v1.post("/learners")
-def v1_create_learner(req: LearnerCreate):
+def v1_create_learner(req: LearnerCreate, request: Request):
     core = get_core()
+    db = get_db()
     lid = req.learner_id or f"lrn_{datetime.now().strftime('%Y%m%d%H%M%S')}_{hash(req.name or '') % 10000:04d}"
     profile = core.create_profile(lid, name=req.name, age=req.age, grade=req.grade, notes=req.notes)
+    
+    # Link learner to authenticated user
+    user = getattr(request.state, "user", None)
+    if user and profile:
+        db.link_user_learner(user["id"], lid)
+        get_audit().log_data_mutation(user["id"], f"learner:{lid}", "create", "success",
+                                     details={"name": req.name, "age": req.age, "grade": req.grade},
+                                     ip_address=request.client.host if request.client else None)
+    
     if profile:
         profile["id"] = lid
     return profile
 
 @v1.get("/learners")
-def v1_list_learners():
+def v1_list_learners(request: Request):
     core = get_core()
     db = get_db()
-    rows = db.list_learners()
+    
+    # Get authenticated user from request state (set by middleware)
+    user = getattr(request.state, "user", None)
+    if user:
+        # Filter learners by user ownership
+        learner_ids = db.get_user_learners(user["id"])
+        rows = [db.get_learner(lid) for lid in learner_ids if db.get_learner(lid)]
+    else:
+        # Fallback: API key auth — return all (for admin/machine access)
+        rows = db.list_learners()
+    
     learners = []
     for row in rows:
+        if not row:
+            continue
         profile = core.get_profile(row["id"])
         mastery_count = len(profile.get("masteryMap", [])) if profile else 0
         learners.append({
@@ -346,8 +486,9 @@ def v1_list_learners():
     return {"learners": learners}
 
 @v1.get("/learners/{learner_id}")
-def v1_get_profile(learner_id: str):
+def v1_get_profile(learner_id: str, request: Request):
     core = get_core()
+    _verify_learner_ownership(request, learner_id)
     profile = core.get_profile(learner_id)
     if not profile or not profile.get("metadata"):
         raise HTTPException(status_code=404, detail="Learner not found")
@@ -367,7 +508,8 @@ def v1_get_profile(learner_id: str):
     return profile
 
 @v1.post("/learners/mastery")
-def v1_update_mastery(req: MasteryUpdate):
+def v1_update_mastery(req: MasteryUpdate, request: Request):
+    _verify_learner_ownership(request, req.learner_id)
     core = get_core()
     return core.update_mastery(req.learner_id, req.topic_id, req.status, req.confidence, req.notes)
 
@@ -415,7 +557,14 @@ def v1_get_in_progress(learner_id: str):
     return {"learner_id": learner_id, "in_progress": db.get_mastery_by_status(learner_id, "in-progress")}
 
 @v1.delete("/learners/{learner_id}")
-def v1_delete_learner(learner_id: str):
+def v1_delete_learner(learner_id: str, request: Request):
+    _verify_learner_ownership(request, learner_id)
+    user = getattr(request.state, "user", None)
+    if user:
+        get_audit().log_data_mutation(user["id"], f"learner:{learner_id}", "delete", "success",
+                                     details={"learner_id": learner_id},
+                                     ip_address=request.client.host if request.client else None,
+                                     severity="critical")
     core = get_core()
     core.delete_profile(learner_id)
     return {"deleted": True, "learner_id": learner_id}
@@ -543,9 +692,10 @@ class UpdateProfileRequest(BaseModel):
     email: Optional[str] = None
 
 @v1.post("/auth/forgot-password")
-def v1_auth_forgot_password(req: PasswordResetRequest):
+def v1_auth_forgot_password(req: PasswordResetRequest, request: Request):
     """Request a password reset email. Always returns success (privacy)."""
     auth = get_auth_mgr()
+    audit = get_audit()
     try:
         token = auth.generate_reset_token(req.email)
         # Get user name for personalization
@@ -553,17 +703,30 @@ def v1_auth_forgot_password(req: PasswordResetRequest):
         name = user.get("name", "") if user else ""
         # Send reset email via Resend
         email_service.send_password_reset(req.email, name, token)
+        if user:
+            audit.log_auth(user["id"], "forgot_password", "success",
+                          ip_address=request.client.host if request.client else None,
+                          details={"email": req.email})
         return {"success": True, "message": "If this email exists, a reset link has been sent."}
     except ValueError:
+        audit.log_auth(None, "forgot_password", "failed",
+                      ip_address=request.client.host if request.client else None,
+                      details={"email": req.email, "reason": "user_not_found"})
         # Still return success to prevent email enumeration
         return {"success": True, "message": "If this email exists, a reset link has been sent."}
 
 @v1.post("/auth/reset-password")
-def v1_auth_reset_password(req: PasswordResetConfirm):
+def v1_auth_reset_password(req: PasswordResetConfirm, request: Request):
     """Reset password using a reset token."""
     auth = get_auth_mgr()
+    audit = get_audit()
     if auth.reset_password(req.token, req.new_password):
+        audit.log_auth(None, "reset_password", "success",
+                      ip_address=request.client.host if request.client else None)
         return {"success": True, "message": "Password reset successfully."}
+    audit.log_auth(None, "reset_password", "failed",
+                  ip_address=request.client.host if request.client else None,
+                  details={"reason": "invalid_token"})
     raise HTTPException(status_code=400, detail="Invalid or expired reset token.")
 
 @v1.post("/auth/update-password")
@@ -596,21 +759,35 @@ def v1_auth_update_profile(req: UpdateProfileRequest, authorization: str = Heade
     return {"success": True, "message": "Profile updated successfully."}
 
 @v1.post("/auth/register")
-def v1_auth_register(req: RegisterRequest):
+def v1_auth_register(req: RegisterRequest, request: Request):
     auth = get_auth_mgr()
+    audit = get_audit()
     try:
         user = auth.register(req.email, req.password, req.name, req.role)
+        audit.log_auth(user["id"], "register", "success", 
+                      ip_address=request.client.host if request.client else None,
+                      details={"email": req.email, "role": req.role})
         return {"success": True, "user": user}
     except ValueError as e:
+        audit.log_auth(None, "register", "failed",
+                      ip_address=request.client.host if request.client else None,
+                      details={"email": req.email, "reason": str(e)})
         raise HTTPException(status_code=400, detail=str(e))
 
 @v1.post("/auth/login")
-def v1_auth_login(req: LoginRequest):
+def v1_auth_login(req: LoginRequest, request: Request):
     auth = get_auth_mgr()
+    audit = get_audit()
     try:
         result = auth.login(req.email, req.password)
+        audit.log_auth(result["user"]["id"], "login", "success",
+                      ip_address=request.client.host if request.client else None,
+                      details={"email": req.email})
         return {"success": True, **result}
     except ValueError as e:
+        audit.log_auth(None, "login", "failed",
+                      ip_address=request.client.host if request.client else None,
+                      details={"email": req.email, "reason": str(e)})
         raise HTTPException(status_code=401, detail=str(e))
 
 @v1.get("/auth/me")
@@ -632,6 +809,29 @@ def v1_auth_me(authorization: str = Header(None)):
     }
     return {"success": True, "user": full_user}
 
+# ── Admin / Audit ────────────────────────────────────────────────────
+@v1.get("/admin/audit-log")
+def v1_audit_log(
+    event_type: Optional[str] = None,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    limit: int = Query(100, le=1000),
+    authorization: str = Header(None)
+):
+    """Query audit logs (admin only, requires API key)."""
+    # Only allow API key auth for admin endpoints
+    if not authorization or not authorization.startswith("ApiKey "):
+        raise HTTPException(status_code=403, detail="Admin access requires API key")
+    api_key = authorization.replace("ApiKey ", "")
+    mgr = get_key_mgr()
+    if not mgr.validate_key(api_key):
+        raise HTTPException(status_code=403, detail="Invalid API key")
+    
+    audit = get_audit()
+    logs = audit.query(event_type=event_type, start_time=start_time, 
+                      end_time=end_time, limit=limit)
+    return {"logs": logs, "count": len(logs)}
+
 # ── Payments ─────────────────────────────────────────────────────────
 @v1.post("/payments/create-checkout-session")
 def v1_create_checkout(req: CheckoutRequest, authorization: str = Header(None)):
@@ -651,7 +851,7 @@ def v1_create_checkout(req: CheckoutRequest, authorization: str = Header(None)):
     try:
         session = stripe_mgr.create_checkout_session(
             user_email=user["email"],
-            plan=req.plan,
+            plan=req.get_plan(),
             user_id=user["id"]
         )
         return {
