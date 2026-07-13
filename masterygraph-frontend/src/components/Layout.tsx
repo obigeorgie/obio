@@ -167,6 +167,17 @@ export default function Layout() {
           )}
 
           {!collapsed && (
+            <a
+              href="https://obiomacare.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 text-[11px] text-[#a8a198] hover:text-[#6366f1] transition-colors"
+            >
+              <span>🌐</span> obiomacare.com
+            </a>
+          )}
+
+          {!collapsed && (
             <p className="text-[11px] text-[#a8a198] px-3 pt-2">
               OBIO Core v1.0
             </p>
@@ -229,6 +240,14 @@ export default function Layout() {
               </NavLink>
             </nav>
             <div className="mt-4 pt-4 border-t border-[#e8e5df]">
+              <a
+                href="https://obiomacare.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-2 py-2 text-sm text-[#6366f1] hover:bg-[#f5f3ef] rounded-xl transition-colors"
+              >
+                <span>🌐</span> Visit obiomacare.com
+              </a>
               {auth.user && (
                 <div className="px-2 mb-3">
                   <p className="text-sm font-medium text-[#3d3834]">{auth.user.name || auth.user.email}</p>
