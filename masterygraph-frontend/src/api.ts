@@ -52,6 +52,13 @@ export const api = {
   tutorHint: (body: any) => apiFetch("/tutor/hint", { method: "POST", body: JSON.stringify(body) }),
   tutorPathSummary: (body: any) => apiFetch("/tutor/path-summary", { method: "POST", body: JSON.stringify(body) }),
   tutorAssess: (body: any) => apiFetch("/tutor/assess", { method: "POST", body: JSON.stringify(body) }),
+  // Parent Dashboard
+  getParentChildren: () => apiFetch("/parent/children"),
+  getParentSummary: () => apiFetch("/parent/summary"),
+  // Gamification
+  getGamificationStats: (learnerId: string) => apiFetch(`/gamification/stats/${learnerId}`),
+  recordActivity: (learnerId: string) => apiFetch(`/gamification/activity/${learnerId}`, { method: "POST" }),
+  awardBadge: (learnerId: string, badgeId: string, badgeName?: string) => apiFetch(`/gamification/award-badge/${learnerId}`, { method: "POST", body: JSON.stringify({ badge_id: badgeId, badge_name: badgeName }) }),
   // Export
   exportData: (body: any) => apiFetch("/export", { method: "POST", body: JSON.stringify(body) }),
 };

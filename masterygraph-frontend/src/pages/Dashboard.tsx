@@ -91,10 +91,14 @@ function QuickActionCard({
   );
 }
 
-function LearnerRow({ learner, index }: { learner: any; index: number }) {
+function LearnerRow({ learner, index, gamification }: { learner: any; index: number; gamification?: any }) {
   const progress = learner.masteryCount && learner.totalTopics
     ? Math.round((learner.masteryCount / learner.totalTopics) * 100)
     : 0;
+  
+  const streak = gamification?.streak_days || 0;
+  const points = gamification?.total_points || 0;
+  const badges = gamification?.badges_earned?.length || 0;
 
   return (
     <Link
@@ -111,6 +115,26 @@ function LearnerRow({ learner, index }: { learner: any; index: number }) {
           {learner.age && `Age ${learner.age}`} {learner.grade && `• ${learner.grade}`}
           {learner.subjectFocus && `• ${learner.subjectFocus}`}
         </div>
+        {/* Gamification mini-stats */}
+        {(streak > 0 || points > 0 || badges > 0) && (
+          <div className="flex items-center gap-2 mt-1">
+            {streak > 0 && (
+              <span className="text-[10px] font-medium bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded">
+                🔥 {streak}d
+              </span>
+            )}
+            {points > 0 && (
+              <span className="text-[10px] font-medium bg-yellow-50 text-yellow-600 px-1.5 py-0.5 rounded">
+                ⭐ {points}pts
+              </span>
+            )}
+            {badges > 0 && (
+              <span className="text-[10px] font-medium bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded">
+                🏆 {badges}
+              </span>
+            )}
+          </div>
+        )}
       </div>
       {progress > 0 && (
         <div className="flex items-center gap-2">
@@ -131,6 +155,8 @@ function LearnerRow({ learner, index }: { learner: any; index: number }) {
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
   const [learners, setLearners] = useState<any[]>([]);
+  const [parentSummary, setParentSummary] = useState<any>(null);
+  const [gamification, setGamification] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const { showOnboarding } = useOnboarding();
@@ -141,12 +167,28 @@ export default function Dashboard() {
 
   async function loadData() {
     try {
-      const [statsData, learnersData] = await Promise.all([
+      const [statsData, learnersData, parentData] = await Promise.all([
         api.getStats(),
         api.listLearners().catch(() => ({ learners: [] })),
+        api.getParentSummary().catch(() => null),
       ]);
       setStats(statsData);
       setLearners(learnersData.learners || []);
+      setParentSummary(parentData);
+      
+      // Fetch gamification for each learner
+      const gamificationData: any = {};
+      if (learnersData.learners) {
+        for (const learner of learnersData.learners) {
+          try {
+            const g = await api.getGamificationStats(learner.id);
+            gamificationData[learner.id] = g;
+          } catch {
+            gamificationData[learner.id] = null;
+          }
+        }
+      }
+      setGamification(gamificationData);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -248,6 +290,44 @@ export default function Dashboard() {
         />
       </div>
 
+      {/* Gamification Stats (if available) */}
+      {parentSummary && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            icon={<Zap className="w-5 h-5" />}
+            label="Total Points"
+            value={parentSummary.total_points || 0}
+            subtitle="across all children"
+            color="#f59e0b"
+            delay={0}
+          />
+          <StatCard
+            icon={<Target className="w-5 h-5" />}
+            label="Best Streak"
+            value={parentSummary.best_streak || 0}
+            subtitle="consecutive days"
+            color="#ef4444"
+            delay={50}
+          />
+          <StatCard
+            icon={<BookOpen className="w-5 h-5" />}
+            label="In Progress"
+            value={parentSummary.total_in_progress || 0}
+            subtitle="topics being learned"
+            color="#6366f1"
+            delay={100}
+          />
+          <StatCard
+            icon={<Award className="w-5 h-5" />}
+            label="Mastered"
+            value={parentSummary.total_mastered || 0}
+            subtitle="topics mastered"
+            color="#10b981"
+            delay={150}
+          />
+        </div>
+      )}
+
       {/* Quick Actions */}
       <div>
         <h2 className="text-lg font-bold text-[#1f1c19] mb-4 tracking-tight">Quick Actions</h2>
@@ -344,7 +424,12 @@ export default function Dashboard() {
           ) : (
             <div className="space-y-2.5">
               {learners.slice(0, 5).map((learner, i) => (
-                <LearnerRow key={learner.id} learner={learner} index={i} />
+                <LearnerRow 
+                  key={learner.id} 
+                  learner={learner} 
+                  index={i} 
+                  gamification={gamification[learner.id]} 
+                />
               ))}
             </div>
           )}
