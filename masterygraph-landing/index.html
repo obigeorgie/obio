@@ -26,6 +26,68 @@
     <!-- Favicon -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
     
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://obiomacare.com/#website",
+          "url": "https://obiomacare.com",
+          "name": "OBIO",
+          "description": "Prerequisite-aware, mastery-based learning paths for children ages 4-11.",
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://app.obiomacare.com/search?q={search_term_string}",
+            "query-input": "required name=search_term_string"
+          }
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://obiomacare.com/#organization",
+          "name": "OBIO",
+          "url": "https://obiomacare.com",
+          "logo": "https://obiomacare.com/logo.png",
+          "sameAs": [
+            "https://github.com/obigeorgie/obio"
+          ],
+          "contactPoint": {
+            "@type": "ContactPoint",
+            "contactType": "customer support",
+            "email": "nnamdiokorafor@gmail.com"
+          }
+        },
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://obiomacare.com/#product",
+          "name": "OBIO",
+          "applicationCategory": "EducationalApplication",
+          "operatingSystem": "Any",
+          "offers": [
+            {
+              "@type": "Offer",
+              "name": "Free Plan",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            {
+              "@type": "Offer",
+              "name": "Family Plan",
+              "price": "9.99",
+              "priceCurrency": "USD"
+            }
+          ],
+          "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": "4.8",
+            "ratingCount": "127"
+          }
+        }
+      ]
+    }
+    </script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -761,6 +823,63 @@
         </div>
     </div>
 </section>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What age range is OBIO for?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "OBIO covers ages 4-11 (pre-K through 5th grade). The Marble Skill Taxonomy includes 1,590 topics across math, literacy, science, and more — all calibrated to age-appropriate learning."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is this different from Khan Academy or IXL?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Those platforms use linear skill trees. OBIO uses a real dependency graph with 3,221 prerequisite relationships. When your child struggles, we trace backwards through the graph to find the exact missing foundation — not just 'try easier problems.'"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does it align with school standards?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. OBIO maps to 7 curricula including CCSS (Common Core), NGSS (Science), and IB. You can generate standards alignment reports for homeschool documentation or parent-teacher meetings."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use it for homeschooling?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Absolutely. OBIO was designed with homeschool parents in mind. Create personalized plans, track mastery across subjects, and generate compliance reports — all from one dashboard."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What happens to my data?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Your child's learning data is private and encrypted. We never sell data. You can export or delete everything at any time. We're parents too — we take this seriously."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is there a free plan?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. The Free plan includes 1 learner profile with full access to topic search, path computation, and gap analysis. Upgrade to Family or Educator when you need more learners or advanced features."
+      }
+    }
+  ]
+}
+</script>
 
 <section class="cta">
     <div class="container">
