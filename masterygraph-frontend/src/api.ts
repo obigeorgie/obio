@@ -61,4 +61,6 @@ export const api = {
   awardBadge: (learnerId: string, badgeId: string, badgeName?: string) => apiFetch(`/gamification/award-badge/${learnerId}`, { method: "POST", body: JSON.stringify({ badge_id: badgeId, badge_name: badgeName }) }),
   // Export
   exportData: (body: any) => apiFetch("/export", { method: "POST", body: JSON.stringify(body) }),
+  // Admin
+  getAdminStats: () => apiFetch("/admin/stats"),
 };

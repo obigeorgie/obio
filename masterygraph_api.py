@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MasteryGraph Core — FastAPI Wrapper (OBIO Edition)
+MasteryGraph Core - FastAPI Wrapper (OBIO Edition)
 Minimal REST API exposing all 12 skills programmatically.
 All routes prefixed with /v1/ to match OBIO API spec.
 
@@ -108,11 +108,11 @@ async def api_key_middleware(request: Request, call_next):
                     "/v1/pricing", "/v1/deploy", "/v1/deploy/status")
     if request.method == "OPTIONS" or request.url.path in exempt_paths:
         return await call_next(request)
-    
+
     # Also exempt dynamic assessment paths and content
     if request.url.path.startswith("/v1/assessment/") or request.url.path.startswith("/v1/content/"):
         return await call_next(request)
-    
+
     # Check Bearer token first (user auth)
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
@@ -128,7 +128,7 @@ async def api_key_middleware(request: Request, call_next):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 content={"detail": "Invalid or expired token"},
             )
-    
+
     # Fall back to API key (machine-to-machine)
     api_key = request.headers.get("X-API-Key")
     mgr = get_key_mgr()
@@ -166,17 +166,17 @@ async def user_rate_limit_middleware(request: Request, call_next):
     exempt_paths = ("/", "/health", "/v1/health", "/docs", "/redoc", "/openapi.json", "/v1/deploy", "/v1/deploy/status")
     if request.method == "OPTIONS" or request.url.path in exempt_paths:
         return await call_next(request)
-    
+
     # Identify user or use IP
     user = getattr(request.state, "user", None)
     key = user["id"] if user else (request.client.host if request.client else "unknown")
-    
+
     now = time.time()
     window = 60  # 1 minute window
-    
+
     # Clean old entries
     _user_rate_limits[key] = [t for t in _user_rate_limits[key] if now - t < window]
-    
+
     # Check limit
     if len(_user_rate_limits[key]) >= USER_RATE_LIMIT:
         return JSONResponse(
@@ -184,10 +184,10 @@ async def user_rate_limit_middleware(request: Request, call_next):
             content={"detail": f"Rate limit exceeded: {USER_RATE_LIMIT} requests per minute"},
             headers={"Retry-After": str(int(window - (now - _user_rate_limits[key][0])))}
         )
-    
+
     # Record this request
     _user_rate_limits[key].append(now)
-    
+
     response = await call_next(request)
     response.headers["X-User-RateLimit-Limit"] = str(USER_RATE_LIMIT)
     response.headers["X-User-RateLimit-Remaining"] = str(USER_RATE_LIMIT - len(_user_rate_limits[key]))
@@ -198,7 +198,7 @@ async def user_rate_limit_middleware(request: Request, call_next):
 async def security_headers_middleware(request: Request, call_next):
     """Add security headers to all responses."""
     response = await call_next(request)
-    
+
     # Content Security Policy
     csp = "; ".join([
         "default-src 'self'",
@@ -213,13 +213,13 @@ async def security_headers_middleware(request: Request, call_next):
         "form-action 'self'",
     ])
     response.headers["Content-Security-Policy"] = csp
-    
+
     # Other security headers
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    
+
     return response
 
 # Shared instances (singleton pattern)
@@ -230,11 +230,11 @@ def _verify_learner_ownership(request: Request, learner_id: str):
     """Verify the authenticated user owns the learner. Raises 403 if not."""
     user = getattr(request.state, "user", None)
     if not user:
-        return  # API key auth — skip ownership check
-    
+        return  # API key auth - skip ownership check
+
     db = get_db()
     owned_ids = db.get_user_learners(user["id"])
-    
+
     if learner_id not in owned_ids:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -362,7 +362,7 @@ class CheckoutRequest(BaseModel):
     plan_type: Optional[str] = Field(None, pattern="^(family|educator)$")
     success_url: Optional[str] = None
     cancel_url: Optional[str] = None
-    
+
     def get_plan(self) -> str:
         """Return the plan value, preferring 'plan' over 'plan_type'."""
         p = self.plan or self.plan_type
@@ -377,7 +377,7 @@ class SubscriptionStatusRequest(BaseModel):
     subscription_id: str
 
 # ───────────────────────────────────────────────────────────────────────────
-# v1 Router — All OBIO API routes under /v1/
+# v1 Router - All OBIO API routes under /v1/
 # ───────────────────────────────────────────────────────────────────────────
 v1 = APIRouter(prefix="/v1")
 
@@ -450,7 +450,7 @@ def v1_create_learner(req: LearnerCreate, request: Request):
     db = get_db()
     lid = req.learner_id or f"lrn_{datetime.now().strftime('%Y%m%d%H%M%S')}_{hash(req.name or '') % 10000:04d}"
     profile = core.create_profile(lid, name=req.name, age=req.age, grade=req.grade, notes=req.notes)
-    
+
     # Link learner to authenticated user
     user = getattr(request.state, "user", None)
     if user and profile:
@@ -458,7 +458,7 @@ def v1_create_learner(req: LearnerCreate, request: Request):
         get_audit().log_data_mutation(user["id"], f"learner:{lid}", "create", "success",
                                      details={"name": req.name, "age": req.age, "grade": req.grade},
                                      ip_address=request.client.host if request.client else None)
-    
+
     if profile:
         profile["id"] = lid
     return profile
@@ -467,7 +467,7 @@ def v1_create_learner(req: LearnerCreate, request: Request):
 def v1_list_learners(request: Request):
     core = get_core()
     db = get_db()
-    
+
     # Get authenticated user from request state (set by middleware)
     user = getattr(request.state, "user", None)
     if user:
@@ -475,9 +475,9 @@ def v1_list_learners(request: Request):
         learner_ids = db.get_user_learners(user["id"])
         rows = [db.get_learner(lid) for lid in learner_ids if db.get_learner(lid)]
     else:
-        # Fallback: API key auth — return all (for admin/machine access)
+        # Fallback: API key auth - return all (for admin/machine access)
         rows = db.list_learners()
-    
+
     learners = []
     for row in rows:
         if not row:
@@ -650,14 +650,14 @@ def v1_gap_analysis_alias(req: GapAnalysisAliasRequest):
     """Alias for /gaps/analyze that accepts {topic_id, learner_id} format."""
     core = get_core()
     db = get_db()
-    
+
     # Get mastered and in-progress from learner profile
     mastered = []
     in_progress = []
     if req.learner_id:
         mastered = db.get_mastery_by_status(req.learner_id, "mastered")
         in_progress = db.get_mastery_by_status(req.learner_id, "in-progress")
-    
+
     result = core.analyze_gaps([req.topic_id], mastered_ids=mastered, in_progress_ids=in_progress)
     result["target"] = {"id": req.topic_id, "name": req.topic_id}
     return result
@@ -667,14 +667,14 @@ def v1_paths_alias(req: PathComputeAliasRequest):
     """Alias for /paths/compute that accepts {target_topic_id, learner_id} format."""
     core = get_core()
     db = get_db()
-    
+
     mastered = []
     age = None
     if req.learner_id:
         mastered = db.get_mastery_by_status(req.learner_id, "mastered")
         profile = core.get_profile(req.learner_id)
         age = profile.get("metadata", {}).get("age") if profile else None
-    
+
     return core.compute_path([req.target_topic_id], mastered_ids=mastered, age=age)
 
 # ── Admin ────────────────────────────────────────────────────────────
@@ -747,7 +747,7 @@ def v1_auth_update_password(req: UpdatePasswordRequest, authorization: str = Hea
     user = auth.verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     if auth.update_password(user["id"], req.current_password, req.new_password):
         return {"success": True, "message": "Password updated successfully."}
     raise HTTPException(status_code=400, detail="Current password is incorrect.")
@@ -762,7 +762,7 @@ def v1_auth_update_profile(req: UpdateProfileRequest, authorization: str = Heade
     user = auth.verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     auth.update_profile(user["id"], req.name, req.email)
     return {"success": True, "message": "Profile updated successfully."}
 
@@ -772,7 +772,7 @@ def v1_auth_register(req: RegisterRequest, request: Request):
     audit = get_audit()
     try:
         user = auth.register(req.email, req.password, req.name, req.role)
-        audit.log_auth(user["id"], "register", "success", 
+        audit.log_auth(user["id"], "register", "success",
                       ip_address=request.client.host if request.client else None,
                       details={"email": req.email, "role": req.role})
         return {"success": True, "user": user}
@@ -834,11 +834,99 @@ def v1_audit_log(
     mgr = get_key_mgr()
     if not mgr.validate_key(api_key):
         raise HTTPException(status_code=403, detail="Invalid API key")
-    
+
     audit = get_audit()
-    logs = audit.query(event_type=event_type, start_time=start_time, 
+    logs = audit.query(event_type=event_type, start_time=start_time,
                       end_time=end_time, limit=limit)
     return {"logs": logs, "count": len(logs)}
+
+# ── Admin Dashboard ──────────────────────────────────────────────────
+@v1.get("/admin/stats")
+def v1_admin_stats(authorization: str = Header(None)):
+    """Admin dashboard stats. Requires JWT auth + admin role."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+    token = authorization.replace("Bearer ", "")
+    auth = get_auth_mgr()
+    user = auth.verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    db = get_db()
+    try:
+        with db._connection() as conn:
+            cur = conn.cursor()
+            # Users by role
+            cur.execute("SELECT role, COUNT(*) FROM users GROUP BY role")
+            users_by_role = {row[0]: row[1] for row in cur.fetchall()}
+
+            # Total users
+            cur.execute("SELECT COUNT(*) FROM users")
+            total_users = cur.fetchone()[0]
+
+            # Recent signups (last 7 days)
+            cur.execute("SELECT COUNT(*) FROM users WHERE created_at > NOW() - INTERVAL '7 days'")
+            recent_signups = cur.fetchone()[0]
+
+            # Active subscriptions
+            cur.execute("SELECT COUNT(*) FROM subscriptions WHERE status IN ('active', 'trialing')")
+            active_subs = cur.fetchone()[0]
+
+            # Plan breakdown
+            cur.execute("SELECT plan, COUNT(*) FROM subscriptions WHERE status IN ('active', 'trialing') GROUP BY plan")
+            plan_breakdown = {row[0]: row[1] for row in cur.fetchall()}
+
+            # Total revenue (approximate from plan counts)
+            cur.execute("SELECT plan, COUNT(*) FROM subscriptions WHERE status='active' GROUP BY plan")
+            plan_counts = {row[0]: row[1] for row in cur.fetchall()}
+            revenue = 0
+            plan_prices = {"family": 1200, "educator": 2900, "premium": 4900}
+            for plan, count in plan_counts.items():
+                price = plan_prices.get(plan.lower(), 0)
+                revenue += price * count
+
+            # Learners
+            cur.execute("SELECT COUNT(*) FROM learners")
+            total_learners = cur.fetchone()[0]
+
+            # Diagnostics completed
+            cur.execute("SELECT COUNT(*) FROM diagnostics")
+            total_diagnostics = cur.fetchone()[0]
+
+            # Learning paths created
+            cur.execute("SELECT COUNT(*) FROM learning_paths")
+            total_paths = cur.fetchone()[0]
+
+            # Recent audit events (last 24h)
+            cur.execute("SELECT COUNT(*) FROM audit_logs WHERE timestamp > NOW() - INTERVAL '24 hours'")
+            recent_events = cur.fetchone()[0]
+
+            return {
+                "users": {
+                    "total": total_users,
+                    "by_role": users_by_role,
+                    "recent_signups_7d": recent_signups,
+                },
+                "subscriptions": {
+                    "active": active_subs,
+                    "plan_breakdown": plan_breakdown,
+                    "total_revenue_cents": revenue,
+                    "total_revenue_dollars": round(revenue / 100, 2),
+                },
+                "content": {
+                    "learners": total_learners,
+                    "diagnostics": total_diagnostics,
+                    "learning_paths": total_paths,
+                },
+                "activity": {
+                    "recent_events_24h": recent_events,
+                },
+                "timestamp": datetime.now().isoformat(),
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Stats error: {e}")
 
 # ── Payments ─────────────────────────────────────────────────────────
 @v1.post("/payments/create-checkout-session")
@@ -851,11 +939,11 @@ def v1_create_checkout(req: CheckoutRequest, authorization: str = Header(None)):
     user = auth.verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     stripe_mgr = get_stripe_manager()
     if not stripe_mgr.is_configured():
         raise HTTPException(status_code=503, detail="Stripe payments not configured")
-    
+
     try:
         session = stripe_mgr.create_checkout_session(
             user_email=user["email"],
@@ -880,11 +968,11 @@ def v1_cancel_subscription(req: CancelSubscriptionRequest, authorization: str = 
     user = auth.verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     stripe_mgr = get_stripe_manager()
     if not stripe_mgr.is_configured():
         raise HTTPException(status_code=503, detail="Stripe payments not configured")
-    
+
     try:
         result = stripe_mgr.cancel_subscription(req.subscription_id)
         return {"success": True, **result}
@@ -901,11 +989,11 @@ def v1_subscription_status(subscription_id: str, authorization: str = Header(Non
     user = auth.verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     stripe_mgr = get_stripe_manager()
     if not stripe_mgr.is_configured():
         raise HTTPException(status_code=503, detail="Stripe payments not configured")
-    
+
     return stripe_mgr.get_subscription_status(subscription_id)
 
 @app.post("/v1/payments/webhook")
@@ -914,10 +1002,10 @@ def v1_stripe_webhook(request: Request):
     stripe_mgr = get_stripe_manager()
     if not stripe_mgr.is_configured():
         raise HTTPException(status_code=503, detail="Stripe not configured")
-    
+
     payload = request.body()
     sig_header = request.headers.get("stripe-signature", "")
-    
+
     result = stripe_mgr.handle_webhook(payload, sig_header)
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result.get("error", "Webhook error"))
@@ -937,11 +1025,11 @@ def v1_send_welcome(req: SendWelcomeRequest, authorization: str = Header(None)):
     user = auth.verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     email = req.email or user.get("email")
     if not email:
         raise HTTPException(status_code=400, detail="No email available")
-    
+
     result = email_service.send_welcome(email, user.get("name", ""))
     return {"success": result.get("status") in ("sent", "skipped"), "result": result}
 
@@ -960,20 +1048,20 @@ def v1_send_mastery_update(req: MasteryUpdateEmailRequest, authorization: str = 
     user = auth.verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     email = user.get("email")
     if not email:
         raise HTTPException(status_code=400, detail="No email available")
-    
+
     core = get_core()
     profile = core.get_profile(req.learner_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Learner not found")
-    
+
     topic = core.get_topic(req.topic_id)
     topic_name = topic.get("name", req.topic_id) if topic else req.topic_id
     learner_name = profile.get("metadata", {}).get("name", req.learner_id)
-    
+
     result = email_service.send_mastery_update(email, learner_name, topic_name, req.status)
     return {"success": result.get("status") in ("sent", "skipped"), "result": result}
 
@@ -991,19 +1079,19 @@ def v1_send_weekly_report(req: WeeklyReportRequest, authorization: str = Header(
     user = auth.verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     email = user.get("email")
     if not email:
         raise HTTPException(status_code=400, detail="No email available")
-    
+
     core = get_core()
     profile = core.get_profile(req.learner_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Learner not found")
-    
+
     learner_name = profile.get("metadata", {}).get("name", req.learner_id)
     stats = req.stats or {}
-    
+
     result = email_service.send_weekly_report(email, learner_name, stats)
     return {"success": result.get("status") in ("sent", "skipped"), "result": result}
 
@@ -1052,30 +1140,30 @@ def v1_tutor_explain(req: TutorExplainRequest, authorization: str = Header(None)
     user = auth.verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     tutor = get_tutor()
     if not tutor.is_configured():
         raise HTTPException(status_code=503, detail="AI tutor not configured - set LLM_API_KEY")
-    
+
     core = get_core()
     topic = core.get_topic(req.topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
-    
+
     # Get prerequisite names for context
     prereqs = []
     for dep_id in topic.get("dependencies", []):
         dep = core.get_topic(dep_id)
         if dep:
             prereqs.append(dep.get("name", dep_id))
-    
+
     explanation = tutor.explain_topic(
         topic_name=topic.get("name", req.topic_id),
         topic_description=topic.get("description", ""),
         age=req.age,
         prerequisite_topics=prereqs[:5]  # Limit to first 5 for brevity
     )
-    
+
     return {"success": True, "topic_id": req.topic_id, "explanation": explanation}
 
 @v1.post("/tutor/practice")
@@ -1088,23 +1176,23 @@ def v1_tutor_practice(req: TutorPracticeRequest, authorization: str = Header(Non
     user = auth.verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     tutor = get_tutor()
     if not tutor.is_configured():
         raise HTTPException(status_code=503, detail="AI tutor not configured - set LLM_API_KEY")
-    
+
     core = get_core()
     topic = core.get_topic(req.topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
-    
+
     problems = tutor.generate_practice_problems(
         topic_name=topic.get("name", req.topic_id),
         age=req.age,
         difficulty=req.difficulty,
         count=req.count
     )
-    
+
     return {"success": True, "topic_id": req.topic_id, "problems": problems}
 
 @v1.post("/tutor/ask")
@@ -1117,20 +1205,20 @@ def v1_tutor_ask(req: TutorQuestionRequest, authorization: str = Header(None)):
     user = auth.verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     tutor = get_tutor()
     if not tutor.is_configured():
         raise HTTPException(status_code=503, detail="AI tutor not configured - set LLM_API_KEY")
-    
+
     topic_context = ""
     if req.topic_id:
         core = get_core()
         topic = core.get_topic(req.topic_id)
         if topic:
             topic_context = f"Topic: {topic.get('name', req.topic_id)}. {topic.get('description', '')}"
-    
+
     answer = tutor.answer_question(req.question, req.age, topic_context)
-    
+
     return {"success": True, "question": req.question, "answer": answer}
 
 @v1.post("/tutor/hint")
@@ -1143,17 +1231,17 @@ def v1_tutor_hint(req: TutorHintRequest, authorization: str = Header(None)):
     user = auth.verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     tutor = get_tutor()
     if not tutor.is_configured():
         raise HTTPException(status_code=503, detail="AI tutor not configured - set LLM_API_KEY")
-    
+
     core = get_core()
     topic = core.get_topic(req.topic_id)
     topic_name = topic.get("name", req.topic_id) if topic else req.topic_id
-    
+
     hint = tutor.provide_hint(topic_name, req.problem, req.age, req.attempt_history)
-    
+
     return {"success": True, "topic_id": req.topic_id, "hint": hint}
 
 @v1.post("/tutor/path-summary")
@@ -1166,19 +1254,19 @@ def v1_tutor_path_summary(req: TutorPathSummaryRequest, authorization: str = Hea
     user = auth.verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     tutor = get_tutor()
     if not tutor.is_configured():
         raise HTTPException(status_code=503, detail="AI tutor not configured - set LLM_API_KEY")
-    
+
     core = get_core()
     topic_names = []
     for tid in req.topic_ids:
         topic = core.get_topic(tid)
         topic_names.append(topic.get("name", tid) if topic else tid)
-    
+
     summary = tutor.generate_learning_path_summary(topic_names, req.age)
-    
+
     return {"success": True, "summary": summary}
 
 @v1.post("/tutor/assess")
@@ -1191,17 +1279,17 @@ def v1_tutor_assess(req: TutorAssessRequest, authorization: str = Header(None)):
     user = auth.verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     tutor = get_tutor()
     if not tutor.is_configured():
         raise HTTPException(status_code=503, detail="AI tutor not configured - set LLM_API_KEY")
-    
+
     core = get_core()
     topic = core.get_topic(req.topic_id)
     topic_name = topic.get("name", req.topic_id) if topic else req.topic_id
-    
+
     assessment = tutor.assess_understanding(topic_name, req.age, req.student_answer, req.correct_answer)
-    
+
     return {"success": True, "topic_id": req.topic_id, "assessment": assessment}
 
 # ── Data Export ───────────────────────────────────────────────────────
@@ -1219,14 +1307,14 @@ def v1_export_data(req: ExportRequest, authorization: str = Header(None)):
     user = auth.verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     core = get_core()
     db = get_db()
-    
+
     # Get all learners for this user
     all_learners = db.list_learners()
     learner_ids = req.learner_ids or [l["id"] for l in all_learners]
-    
+
     data = []
     for lid in learner_ids:
         profile = core.get_profile(lid)
@@ -1247,7 +1335,7 @@ def v1_export_data(req: ExportRequest, authorization: str = Header(None)):
                 ],
                 "export_date": datetime.now().isoformat(),
             })
-    
+
     if req.format == "csv":
         import csv
         import io
@@ -1268,7 +1356,7 @@ def v1_export_data(req: ExportRequest, authorization: str = Header(None)):
                     m["last_assessed"],
                 ])
         return {"format": "csv", "data": output.getvalue()}
-    
+
     return {"format": "json", "count": len(data), "learners": data}
 
 from content_engine import get_content_engine, CONTENT_DIR
@@ -1305,7 +1393,7 @@ def v1_create_assessment(req: CreateAssessmentRequest):
         child_name=req.child_name,
         notes=req.notes,
     )
-    
+
     # Track the event
     tracker = get_tracker()
     tracker.track_event(
@@ -1318,7 +1406,7 @@ def v1_create_assessment(req: CreateAssessmentRequest):
             "parent_email": req.parent_email,
         },
     )
-    
+
     # If email provided, trigger nurture sequence
     if req.parent_email and "@" in req.parent_email:
         nurture = get_nurture()
@@ -1339,7 +1427,7 @@ def v1_create_assessment(req: CreateAssessmentRequest):
             context=context,
         )
         result["email_sent"] = email_result.get("sent", False)
-    
+
     return result
 
 @app.get("/v1/assessment/{assessment_id}")
@@ -1349,14 +1437,14 @@ def v1_get_assessment(assessment_id: str):
     result = engine.get_assessment(assessment_id)
     if not result:
         raise HTTPException(status_code=404, detail="Assessment not found")
-    
+
     # Track view
     tracker = get_tracker()
     tracker.track_event(
         event_type="assessment_viewed",
         properties={"assessment_id": assessment_id},
     )
-    
+
     return result
 
 @app.get("/v1/assessment/stats")
@@ -1400,16 +1488,16 @@ def v1_analytics_dashboard():
 def v1_create_referral(req: ReferralRequest):
     """Create a referral link."""
     tracker = get_tracker()
-    
+
     # Track referral
     tracker.track_event(
         event_type="referral_shared",
         user_id=req.referrer_id,
         properties={"referred_email": req.referred_email},
     )
-    
+
     referral_code = f"ref_{req.referrer_id}_{os.urandom(4).hex()}"
-    
+
     return {
         "success": True,
         "referral_code": referral_code,
@@ -1430,7 +1518,7 @@ def v1_convert_referral(referral_code: str, new_user_id: str):
 
 # ── Nurture Sequences ─────────────────────────────────────────────────
 @app.post("/v1/nurture/send")
-def v1_send_nurture_email(user_email: str, sequence_type: str, day: int, 
+def v1_send_nurture_email(user_email: str, sequence_type: str, day: int,
                           context: Dict[str, Any] = Body(...)):
     """Send a nurture sequence email. Admin use."""
     nurture = get_nurture()
@@ -1438,7 +1526,7 @@ def v1_send_nurture_email(user_email: str, sequence_type: str, day: int,
     return result
 
 @app.post("/v1/nurture/next")
-def v1_get_next_nurture_emails(user_email: str, sequence_type: str, 
+def v1_get_next_nurture_emails(user_email: str, sequence_type: str,
                                start_date: str, current_status: Dict[str, Any] = Body(...)):
     """Get next emails in a nurture sequence. Admin use."""
     nurture = get_nurture()
@@ -1452,7 +1540,7 @@ def v1_get_next_nurture_emails(user_email: str, sequence_type: str,
 def v1_generate_content(topic_id: Optional[str] = None, count: int = 1, subject: Optional[str] = None):
     """Generate SEO blog posts from taxonomy. Admin use."""
     engine = get_content_engine()
-    
+
     if topic_id:
         post = engine.generate_blog_post(topic_id)
         return {"success": True, "posts": [post] if post else []}
@@ -1472,10 +1560,10 @@ def v1_get_content(slug: str):
     filepath = CONTENT_DIR / f"{slug}.md"
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Content not found")
-    
+
     with open(filepath) as f:
         content = f.read()
-    
+
     return {"slug": slug, "content": content}
 
 from outreach_manager import get_outreach_manager
@@ -1718,7 +1806,7 @@ async def deploy_webhook(request: Request, x_hub_signature_256: str = Header(Non
                 "stdout": result.stdout[-500:] if result.stdout else "",
                 "stderr": result.stderr[-500:] if result.stderr else "",
             }
-        
+
         # Step 2: Restart service in a detached process so we don't kill ourselves
         # Use nohup to survive after this process exits
         restart_cmd = f"cd {DEPLOY_DIR} && sleep 2 && systemctl restart obio-backend.service"
@@ -1728,7 +1816,7 @@ async def deploy_webhook(request: Request, x_hub_signature_256: str = Header(Non
             stderr=subprocess.DEVNULL,
             start_new_session=True
         )
-        
+
         _last_deploy_time = datetime.now().isoformat()
         return {
             "status": "deployed",

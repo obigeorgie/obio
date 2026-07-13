@@ -22,6 +22,7 @@ import GrowthDashboard from "./pages/GrowthDashboard";
 import ProductHuntLaunch from "./pages/ProductHunt";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import PaymentCancel from "./pages/PaymentCancel";
+import AdminDashboard from "./pages/AdminDashboard";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const auth = getAuth();
@@ -64,6 +65,7 @@ function AppWithOnboarding() {
           <Route path="analytics" element={<Analytics />} />
           <Route path="tutor" element={<Tutor />} />
           <Route path="growth" element={<GrowthDashboard />} />
+          <Route path="admin" element={<AdminDashboard />} />
           <Route path="account" element={<AccountSettings />} />
         </Route>
       </Routes>
