@@ -20,6 +20,8 @@ import Tutor from "./pages/Tutor";
 import FreeAssessment from "./pages/Assessment";
 import GrowthDashboard from "./pages/GrowthDashboard";
 import ProductHuntLaunch from "./pages/ProductHunt";
+import PaymentSuccess from "./pages/PaymentSuccess";
+import PaymentCancel from "./pages/PaymentCancel";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const auth = getAuth();
@@ -45,6 +47,8 @@ function AppWithOnboarding() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/pricing" element={<Pricing />} />
+        <Route path="/payment/success" element={<PaymentSuccess />} />
+        <Route path="/payment/cancel" element={<PaymentCancel />} />
         <Route path="/assessment" element={<FreeAssessment />} />
         <Route path="/assessment/:id" element={<FreeAssessment />} />
         <Route path="/producthunt" element={<ProductHuntLaunch />} />
