@@ -1768,7 +1768,7 @@ def v1_gamification_award_badge(learner_id: str, request: Request, badge_id: str
 app.include_router(v1)
 
 # ── CI/CD Deploy Webhook ───────────────────────────────────────────────
-DEPLOY_SECRET = os.getenv("GITHUB_DEPLOY_SECRET", "")
+DEPLOY_SECRET = os.getenv("BACKEND_DEPLOY_SECRET") or os.getenv("GITHUB_DEPLOY_SECRET", "")
 DEPLOY_BRANCH = os.getenv("GITHUB_DEPLOY_BRANCH", "main")
 DEPLOY_DIR = os.getenv("GITHUB_DEPLOY_DIR", "/root/.openclaw/workspace")
 _last_deploy_time = None

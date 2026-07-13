@@ -20,7 +20,7 @@ jobs:
           # Build payload
           PAYLOAD='{"ref":"refs/heads/main"}'
           # Calculate HMAC signature
-          SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "${{ secrets.GITHUB_DEPLOY_SECRET }}" | sed 's/^.* //')
+          SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "${{ secrets.BACKEND_DEPLOY_SECRET }}" | sed 's/^.* //')
           
           # Trigger deploy
           curl -X POST \
