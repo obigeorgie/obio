@@ -164,6 +164,31 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     severity    TEXT CHECK(severity IN ('info','warning','error','critical')) DEFAULT 'info'
 );
 
+-- Gamification: badges, streaks, points
+CREATE TABLE IF NOT EXISTS gamification_stats (
+    id              SERIAL PRIMARY KEY,
+    learner_id      TEXT NOT NULL UNIQUE,
+    streak_days     INTEGER DEFAULT 0,
+    longest_streak  INTEGER DEFAULT 0,
+    total_points    INTEGER DEFAULT 0,
+    badges_earned   JSONB DEFAULT '[]',
+    last_activity   TIMESTAMP,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Available badges definition
+CREATE TABLE IF NOT EXISTS badges (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    description     TEXT,
+    icon            TEXT,
+    category        TEXT CHECK(category IN ('milestone','streak','achievement','subject')),
+    points          INTEGER DEFAULT 0,
+    criteria        JSONB,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_mastery_learner     ON mastery(learner_id);
 CREATE INDEX IF NOT EXISTS idx_mastery_topic       ON mastery(topic_id);
@@ -554,6 +579,101 @@ class MasteryGraphPostgresDB:
                 if row["details"]:
                     row["details"] = json.loads(row["details"])
             return [dict(row) for row in rows]
+
+    # ── Gamification ─────────────────────────────────────────────────
+    def get_gamification_stats(self, learner_id: str) -> Optional[Dict]:
+        with self._connection() as cur:
+            cur.execute("SELECT * FROM gamification_stats WHERE learner_id = %s", (learner_id,))
+            row = cur.fetchone()
+            if row:
+                stats = dict(row)
+                if stats.get("badges_earned"):
+                    stats["badges_earned"] = json.loads(stats["badges_earned"])
+                return stats
+            return None
+
+    def update_gamification_activity(self, learner_id: str):
+        """Update streak and activity timestamp when learner is active."""
+        now = datetime.utcnow()
+        with self._transaction() as cur:
+            # Check existing record
+            cur.execute("SELECT * FROM gamification_stats WHERE learner_id = %s", (learner_id,))
+            row = cur.fetchone()
+            if not row:
+                # Create new record
+                cur.execute(
+                    "INSERT INTO gamification_stats (learner_id, streak_days, longest_streak, total_points, last_activity) VALUES (%s, 1, 1, 0, %s)",
+                    (learner_id, now)
+                )
+                return {"streak_days": 1, "longest_streak": 1, "total_points": 0}
+            
+            last_activity = row["last_activity"]
+            streak = row["streak_days"]
+            longest = row["longest_streak"]
+            
+            if last_activity:
+                from datetime import timedelta
+                days_since = (now - last_activity).days
+                if days_since == 0:
+                    # Already active today, no change
+                    pass
+                elif days_since == 1:
+                    # Continue streak
+                    streak += 1
+                    if streak > longest:
+                        longest = streak
+                else:
+                    # Streak broken
+                    streak = 1
+            else:
+                streak = 1
+                longest = max(longest, 1)
+            
+            cur.execute(
+                "UPDATE gamification_stats SET streak_days = %s, longest_streak = %s, last_activity = %s WHERE learner_id = %s",
+                (streak, longest, now, learner_id)
+            )
+            return {"streak_days": streak, "longest_streak": longest}
+
+    def award_badge(self, learner_id: str, badge_id: str, badge_name: str = None):
+        """Award a badge to a learner."""
+        now = datetime.utcnow().isoformat()
+        with self._transaction() as cur:
+            cur.execute("SELECT badges_earned FROM gamification_stats WHERE learner_id = %s", (learner_id,))
+            row = cur.fetchone()
+            if not row:
+                # Create record with first badge
+                badges = [{"id": badge_id, "name": badge_name or badge_id, "earned_at": now}]
+                cur.execute(
+                    "INSERT INTO gamification_stats (learner_id, badges_earned, total_points, streak_days, longest_streak) VALUES (%s, %s, 10, 0, 0)",
+                    (learner_id, json.dumps(badges))
+                )
+            else:
+                badges = json.loads(row["badges_earned"] or "[]")
+                # Check if already earned
+                if any(b["id"] == badge_id for b in badges):
+                    return {"already_earned": True}
+                badges.append({"id": badge_id, "name": badge_name or badge_id, "earned_at": now})
+                cur.execute(
+                    "UPDATE gamification_stats SET badges_earned = %s, total_points = total_points + 10 WHERE learner_id = %s",
+                    (json.dumps(badges), learner_id)
+                )
+            return {"earned": True, "badge_id": badge_id, "badge_name": badge_name}
+
+    def add_points(self, learner_id: str, points: int):
+        """Add points to a learner's total."""
+        with self._transaction() as cur:
+            cur.execute(
+                "UPDATE gamification_stats SET total_points = total_points + %s WHERE learner_id = %s",
+                (points, learner_id)
+            )
+            if cur.rowcount == 0:
+                # Create record
+                cur.execute(
+                    "INSERT INTO gamification_stats (learner_id, total_points) VALUES (%s, %s)",
+                    (learner_id, points)
+                )
+            return {"points_added": points}
 
     # ── Stats ─────────────────────────────────────────────────────────
     def get_stats(self) -> Dict:

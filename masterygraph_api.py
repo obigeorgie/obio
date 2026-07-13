@@ -1567,6 +1567,115 @@ def v1_get_pricing():
         "currency": "usd",
     }
 
+# ── Parent Dashboard ───────────────────────────────────────────────────
+@v1.get("/parent/children")
+def v1_parent_children(request: Request):
+    """Get all learners linked to the current parent user."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    db = get_db()
+    learner_ids = db.get_user_learners(user["id"])
+    learners = []
+    for lid in learner_ids:
+        profile = db.get_learner(lid)
+        if profile:
+            # Get mastery stats
+            mastery = db.get_learner_mastery(lid)
+            mastered = len([m for m in mastery if m.get("status") == "mastered"])
+            in_progress = len([m for m in mastery if m.get("status") == "in-progress"])
+            # Get gamification stats
+            gamification = db.get_gamification_stats(lid) or {}
+            learners.append({
+                "id": lid,
+                "name": profile.get("name", "Unnamed"),
+                "age": profile.get("age"),
+                "grade": profile.get("grade"),
+                "mastery_count": mastered,
+                "in_progress_count": in_progress,
+                "streak_days": gamification.get("streak_days", 0),
+                "total_points": gamification.get("total_points", 0),
+                "badges_count": len(gamification.get("badges_earned", [])),
+            })
+    return {"children": learners, "count": len(learners)}
+
+@v1.get("/parent/summary")
+def v1_parent_summary(request: Request):
+    """Get aggregate summary across all children."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    db = get_db()
+    learner_ids = db.get_user_learners(user["id"])
+    total_mastered = 0
+    total_in_progress = 0
+    total_points = 0
+    total_streak = 0
+    for lid in learner_ids:
+        mastery = db.get_learner_mastery(lid)
+        total_mastered += len([m for m in mastery if m.get("status") == "mastered"])
+        total_in_progress += len([m for m in mastery if m.get("status") == "in-progress"])
+        gamification = db.get_gamification_stats(lid) or {}
+        total_points += gamification.get("total_points", 0)
+        total_streak = max(total_streak, gamification.get("streak_days", 0))
+    return {
+        "total_children": len(learner_ids),
+        "total_mastered": total_mastered,
+        "total_in_progress": total_in_progress,
+        "total_points": total_points,
+        "best_streak": total_streak,
+    }
+
+# ── Gamification ───────────────────────────────────────────────────────
+@v1.get("/gamification/stats/{learner_id}")
+def v1_gamification_stats(learner_id: str, request: Request):
+    """Get gamification stats for a learner."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    db = get_db()
+    # Verify parent owns this learner
+    owned = db.get_user_learners(user["id"])
+    if learner_id not in owned:
+        raise HTTPException(status_code=403, detail="Not authorized to view this learner")
+    stats = db.get_gamification_stats(learner_id)
+    if not stats:
+        return {
+            "learner_id": learner_id,
+            "streak_days": 0,
+            "longest_streak": 0,
+            "total_points": 0,
+            "badges_earned": [],
+            "last_activity": None,
+        }
+    return stats
+
+@v1.post("/gamification/activity/{learner_id}")
+def v1_gamification_activity(learner_id: str, request: Request):
+    """Record activity and update streak for a learner."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    db = get_db()
+    owned = db.get_user_learners(user["id"])
+    if learner_id not in owned:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    result = db.update_gamification_activity(learner_id)
+    return {"learner_id": learner_id, **result}
+
+@v1.post("/gamification/award-badge/{learner_id}")
+def v1_gamification_award_badge(learner_id: str, request: Request, badge_id: str = Body(...), badge_name: str = Body(None)):
+    """Award a badge to a learner."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    db = get_db()
+    owned = db.get_user_learners(user["id"])
+    if learner_id not in owned:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    result = db.award_badge(learner_id, badge_id, badge_name)
+    return {"learner_id": learner_id, **result}
+
 # ── Include the v1 router ────────────────────────────────────────────
 app.include_router(v1)
 
