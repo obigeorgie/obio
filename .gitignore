@@ -67,3 +67,5 @@ EOF
 *.db-wal
 backups/
 *.sql.gz
+.env
+.env.local
