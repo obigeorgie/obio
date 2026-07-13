@@ -7,7 +7,10 @@
 #   export STRIPE_SECRET_KEY="..."
 #   export STRIPE_WEBHOOK_SECRET="..."
 #   export SENTRY_DSN="..."  (optional)
+#   export OPENROUTER_API_KEY="..."  (for AI tutor)
 #
+# Or create a .env file (gitignored) and source it:
+#   source /root/.openclaw/.env
 # Set them in ~/.bashrc, /etc/environment, or a .env file (gitignored)
 
 cd /root/.openclaw/workspace
@@ -26,12 +29,17 @@ if [ $MISSING -eq 1 ]; then
     exit 1
 fi
 
-# Optional: derive LLM_API_KEY from OPENAI if not set
-export LLM_API_KEY="${LLM_API_KEY:-$OPENAI_API_KEY}"
+# AI Tutor: OpenRouter configuration (uses OPENROUTER_API_KEY if set, else OPENAI)
+if [ -n "$OPENROUTER_API_KEY" ]; then
+    export LLM_API_BASE="${LLM_API_BASE:-https://openrouter.ai/api/v1}"
+    export LLM_API_KEY="${LLM_API_KEY:-$OPENROUTER_API_KEY}"
+    export LLM_MODEL="${LLM_MODEL:-meta-llama/llama-3.1-8b-instruct}"
+else
+    export LLM_API_BASE="${LLM_API_BASE:-https://api.openai.com/v1}"
+    export LLM_API_KEY="${LLM_API_KEY:-$OPENAI_API_KEY}"
+    export LLM_MODEL="${LLM_MODEL:-gpt-4o-mini}"
+fi
 
-# Defaults
-export LLM_API_BASE="${LLM_API_BASE:-https://api.openai.com/v1}"
-export LLM_MODEL="${LLM_MODEL:-gpt-4o-mini}"
 export ENVIRONMENT="${ENVIRONMENT:-production}"
 export RELEASE="${RELEASE:-1.0.0}"
 export USER_RATE_LIMIT="${USER_RATE_LIMIT:-60}"

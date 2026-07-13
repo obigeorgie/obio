@@ -43,7 +43,7 @@ class AITutor:
                     "temperature": temperature,
                     "max_tokens": max_tokens,
                 },
-                timeout=60,
+                timeout=15,
             )
             if resp.status_code == 200:
                 data = resp.json()
