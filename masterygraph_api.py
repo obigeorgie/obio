@@ -21,7 +21,11 @@ from pydantic import BaseModel, Field
 # Add workspace to path
 sys.path.insert(0, str(Path(__file__).parent))
 from masterygraph_core import MasteryGraphCore
-from masterygraph_db import MasteryGraphDB
+# Try PostgreSQL first, fall back to SQLite
+try:
+    from masterygraph_postgres import MasteryGraphDB
+except ImportError:
+    from masterygraph_db import MasteryGraphDB
 from api_key_manager import APIKeyManager
 
 from masterygraph_auth import AuthManager
