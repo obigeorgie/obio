@@ -195,6 +195,18 @@ async def user_rate_limit_middleware(request: Request, call_next):
 
 # ── Security Headers (CSP) ──────────────────────────────────────────────────
 @app.middleware("http")
+async def https_redirect_middleware(request: Request, call_next):
+    """Redirect HTTP to HTTPS for production requests."""
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    if forwarded_proto == "http" and "localhost" not in request.base_url.hostname:
+        return JSONResponse(
+            status_code=308,
+            content={"detail": "Use HTTPS"},
+            headers={"Location": str(request.url).replace("http://", "https://", 1)}
+        )
+    return await call_next(request)
+
+@app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
     """Add security headers to all responses."""
     response = await call_next(request)
@@ -219,6 +231,8 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # HSTS - force HTTPS for 2 years including subdomains
+    response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
 
     return response
 
