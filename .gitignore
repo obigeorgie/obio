@@ -65,3 +65,5 @@ HEARTBEAT.md
 EOF
 *.db-shm
 *.db-wal
+backups/
+*.sql.gz
